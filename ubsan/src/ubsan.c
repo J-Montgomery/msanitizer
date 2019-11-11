@@ -37,11 +37,7 @@
  */
 
 #include <sys/cdefs.h>
-#if defined(_KERNEL)
-__KERNEL_RCSID(0, "$NetBSD: ubsan.c,v 1.9 2019/11/01 14:54:07 kamil Exp $");
-#else
-__RCSID("$NetBSD: ubsan.c,v 1.9 2019/11/01 14:54:07 kamil Exp $");
-#endif
+#include <stdlib.h>
 
 #if defined(_KERNEL)
 #include <sys/param.h>
@@ -73,6 +69,37 @@ __RCSID("$NetBSD: ubsan.c,v 1.9 2019/11/01 14:54:07 kamil Exp $");
 #define ubsan_vsyslog vsyslog_r
 #define ASSERT(x) assert(x)
 #endif
+
+
+/* Custom macros */
+/* clear && gcc ubsan.c -lbsd -o ubsan */
+/* sudo apt-get install  libbsd-dev */
+#include <bsd/string.h>
+#define	__BIT(__n)	\
+    (((uintmax_t)(__n) >= NBBY * sizeof(uintmax_t)) ? 0 : \
+    ((uintmax_t)1 << (uintmax_t)((__n) & (NBBY * sizeof(uintmax_t) - 1))))
+
+#define	__unreachable()	__builtin_unreachable()
+#define	__arraycount(__x)	(sizeof(__x) / sizeof(__x[0]))
+#define	__LOWEST_SET_BIT(__mask) ((((__mask) - 1) & (__mask)) ^ (__mask))
+#define	__SHIFTOUT(__x, __mask)	(((__x) & (__mask)) / __LOWEST_SET_BIT(__mask)) 
+   
+struct syslog_data {
+                   int             log_file;
+                   int             connected;
+                   int             opened;
+                   int             log_stat;
+                   const char     *log_tag;
+                   int             log_fac;
+                   int             log_mask;
+           };
+#define SYSLOG_DATA_INIT { \
+               .log_file = -1, \
+               .log_fac = LOG_USER, \
+               .log_mask = 0xff, \
+           }
+
+    
 /* These macros are available in _KERNEL only */
 #define SET(t, f)	((t) |= (f))
 #define ISSET(t, f)	((t) & (f))
@@ -246,7 +273,7 @@ struct CImplicitConversionData {
 };
 
 /* Local utility functions */
-static void Report(bool isFatal, const char *pFormat, ...) __printflike(2, 3);
+static void Report(bool isFatal, const char *pFormat, ...) __attribute__ ((format (printf, 2, 3)));
 static bool isAlreadyReported(struct CSourceLocation *pLocation);
 static size_t zDeserializeTypeWidth(struct CTypeDescriptor *pType);
 static void DeserializeLocation(char *pBuffer, size_t zBUfferLength, struct CSourceLocation *pLocation);
