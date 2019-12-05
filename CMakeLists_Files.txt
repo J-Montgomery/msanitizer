@@ -5,6 +5,6 @@ set(UBSAN_HEADERS
 ${HEADER_ROOT}/ubsan.h
 )
 
-set(UBSAN_HEADERS
+set(UBSAN_SOURCES
 ${SRC_ROOT}/ubsan.c
 )

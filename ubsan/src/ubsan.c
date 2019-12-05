@@ -39,15 +39,6 @@
 #include <sys/cdefs.h>
 #include <stdlib.h>
 
-#if defined(_KERNEL)
-#include <sys/param.h>
-#include <sys/types.h>
-#include <sys/stdarg.h>
-#define ASSERT(x) KASSERT(x)
-#else
-#if defined(_LIBC)
-#include "namespace.h"
-#endif
 #include <sys/param.h>
 #include <assert.h>
 #include <inttypes.h>
@@ -59,22 +50,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <syslog.h>
-#include <unistd.h>
-#if defined(_LIBC)
-#include "extern.h"
-#define ubsan_vsyslog vsyslog_ss
-#define ASSERT(x) _DIAGASSERT(x)
-#else
-#define ubsan_vsyslog vsyslog_r
-#define ASSERT(x) assert(x)
-#endif
+#include <limits.h>
 
+#define ASSERT(x) assert(x)
 
 /* Custom macros */
 /* clear && gcc ubsan.c -lbsd -o ubsan */
 /* sudo apt-get install  libbsd-dev */
-#include <bsd/string.h>
 #define	__BIT(__n)	\
     (((uintmax_t)(__n) >= NBBY * sizeof(uintmax_t)) ? 0 : \
     ((uintmax_t)1 << (uintmax_t)((__n) & (NBBY * sizeof(uintmax_t) - 1))))
@@ -83,28 +65,11 @@
 #define	__arraycount(__x)	(sizeof(__x) / sizeof(__x[0]))
 #define	__LOWEST_SET_BIT(__mask) ((((__mask) - 1) & (__mask)) ^ (__mask))
 #define	__SHIFTOUT(__x, __mask)	(((__x) & (__mask)) / __LOWEST_SET_BIT(__mask)) 
-   
-struct syslog_data {
-                   int             log_file;
-                   int             connected;
-                   int             opened;
-                   int             log_stat;
-                   const char     *log_tag;
-                   int             log_fac;
-                   int             log_mask;
-           };
-#define SYSLOG_DATA_INIT { \
-               .log_file = -1, \
-               .log_fac = LOG_USER, \
-               .log_mask = 0xff, \
-           }
-
     
 /* These macros are available in _KERNEL only */
 #define SET(t, f)	((t) |= (f))
 #define ISSET(t, f)	((t) & (f))
 #define CLR(t, f)	((t) &= ~(f))
-#endif
 
 #ifdef UBSAN_ALWAYS_FATAL
 static const bool alwaysFatal = true;
@@ -117,8 +82,8 @@ static const bool alwaysFatal = false;
 
 #define ACK_REPORTED	__BIT(31)
 
-#define MUL_STRING	"*"
-#define PLUS_STRING	"+"
+#define MUL_STRING	    "*"
+#define PLUS_STRING	    "+"
 #define MINUS_STRING	"-"
 #define DIVREM_STRING	"divrem"
 
@@ -143,17 +108,12 @@ static const bool alwaysFatal = false;
 
 #define NUMBER_SIGNED_BIT	1U
 
-#ifdef __SIZEOF_INT128__
-typedef __int128 longest;
-typedef unsigned __int128 ulongest;
-#else
 typedef int64_t longest;
 typedef uint64_t ulongest;
-#endif
 
 #ifndef _KERNEL
 static int ubsan_flags = -1;
-#define UBSAN_ABORT	__BIT(0)
+#define UBSAN_ABORT	    __BIT(0)
 #define UBSAN_STDOUT	__BIT(1)
 #define UBSAN_STDERR	__BIT(2)
 #define UBSAN_SYSLOG	__BIT(3)
@@ -161,9 +121,9 @@ static int ubsan_flags = -1;
 
 /* Undefined Behavior specific defines and structures */
 
-#define KIND_INTEGER	0
-#define KIND_FLOAT	1
-#define KIND_UNKNOWN	UINT16_MAX
+#define KIND_INTEGER  0
+#define KIND_FLOAT	  1
+#define KIND_UNKNOWN  UINT16_MAX
 
 struct CSourceLocation {
 	char *mFilename;
@@ -507,7 +467,7 @@ HandleShiftOutOfBounds(bool isFatal, struct CShiftOutOfBoundsData *pData, unsign
 		Report(isFatal, "UBSan: Undefined Behavior in %s, shift exponent %s is negative\n",
 		       szLocation, szRHS);
 	else if (isShiftExponentTooLarge(szLocation, pData->mRHSType, ulRHS, zDeserializeTypeWidth(pData->mLHSType)))
-		Report(isFatal, "UBSan: Undefined Behavior in %s, shift exponent %s is too large for %zu-bit type %s\n",
+		Report(isFatal, "UBSan: Undefined Behavior in %s, shift exponent %s is too large for %lu-bit type %s\n",
 		       szLocation, szRHS, zDeserializeTypeWidth(pData->mLHSType), pData->mLHSType->mTypeName);
 	else if (isNegativeNumber(szLocation, pData->mLHSType, ulLHS))
 		Report(isFatal, "UBSan: Undefined Behavior in %s, left shift of negative value %s\n",
@@ -739,7 +699,7 @@ HandleImplicitConversion(bool isFatal, struct CImplicitConversionData *pData, un
 	DeserializeNumber(szLocation, szFrom, NUMBER_MAXLEN, pData->mFromType, ulFrom);
 	DeserializeNumber(szLocation, szTo, NUMBER_MAXLEN, pData->mToType, ulTo);
 
-	Report(isFatal, "UBSan: Undefined Behavior in %s, %s from %s %zu-bit %s (%s) to %s changed the value to %s %zu-bit %s\n",
+	Report(isFatal, "UBSan: Undefined Behavior in %s, %s from %s %lu-bit %s (%s) to %s changed the value to %s %lu-bit %s\n",
 	       szLocation, DeserializeImplicitConversionCheckKind(pData->mKind), szFrom, zDeserializeTypeWidth(pData->mFromType), ISSET(pData->mFromType->mTypeInfo, NUMBER_SIGNED_BIT) ? "signed" : "unsigned", pData->mFromType->mTypeName, pData->mToType->mTypeName, szTo, zDeserializeTypeWidth(pData->mToType), ISSET(pData->mToType->mTypeInfo, NUMBER_SIGNED_BIT) ? "signed" : "unsigned");
 }
 
@@ -1253,7 +1213,12 @@ Report(bool isFatal, const char *pFormat, ...)
 
 		ubsan_flags = UBSAN_STDERR;
 
-		if (getenv_r("LIBC_UBSAN", buf, sizeof(buf)) != -1) {
+		char *env = getenv("UBSAN");
+
+		if (env) {
+			size_t len = strnlen(env, 1024);
+			memcpy(buf, env, len);
+
 			for (p = buf; *p; p++) {
 				switch (*p) {
 				case 'a':
@@ -1303,13 +1268,6 @@ Report(bool isFatal, const char *pFormat, ...)
 		va_end(tmp);
 		fflush(stderr);
 	}
-	if (ISSET(ubsan_flags, UBSAN_SYSLOG)) {
-		va_list tmp;
-		va_copy(tmp, ap);
-		struct syslog_data SyslogData = SYSLOG_DATA_INIT;
-		ubsan_vsyslog(LOG_DEBUG | LOG_USER, &SyslogData, pFormat, tmp);
-		va_end(tmp);
-	}
 	if (isFatal || alwaysFatal || ISSET(ubsan_flags, UBSAN_ABORT)) {
 		abort();
 		__unreachable();
@@ -1356,7 +1314,7 @@ zDeserializeTypeWidth(struct CTypeDescriptor *pType)
 		zWidth = pType->mTypeInfo;
 		break;
 	default:
-		Report(true, "UBSan: Unknown variable type %#04" PRIx16 "\n", pType->mTypeKind);
+		Report(true, "UBSan: Unknown variable type %#04x\n", pType->mTypeKind);
 		__unreachable();
 		/* NOTREACHED */
 	}
@@ -1374,7 +1332,7 @@ DeserializeLocation(char *pBuffer, size_t zBUfferLength, struct CSourceLocation 
 	ASSERT(pLocation);
 	ASSERT(pLocation->mFilename);
 
-	snprintf(pBuffer, zBUfferLength, "%s:%" PRIu32 ":%" PRIu32, pLocation->mFilename, pLocation->mLine & (uint32_t)~ACK_REPORTED, pLocation->mColumn);
+	snprintf(pBuffer, zBUfferLength, "%s:%u:%u", pLocation->mFilename, pLocation->mLine & (uint32_t)~ACK_REPORTED, pLocation->mColumn);
 }
 
 #ifdef __SIZEOF_INT128__
@@ -1426,7 +1384,7 @@ DeserializeNumberSigned(char *pBuffer, size_t zBUfferLength, struct CTypeDescrip
 	case WIDTH_16:
 		/* FALLTHROUGH */
 	case WIDTH_8:
-		snprintf(pBuffer, zBUfferLength, "%" PRId64, STATIC_CAST(int64_t, L));
+		snprintf(pBuffer, zBUfferLength, "%lld", STATIC_CAST(int64_t, L));
 		break;
 	}
 }
@@ -1457,7 +1415,7 @@ DeserializeNumberUnsigned(char *pBuffer, size_t zBUfferLength, struct CTypeDescr
 	case WIDTH_16:
 		/* FALLTHROUGH */
 	case WIDTH_8:
-		snprintf(pBuffer, zBUfferLength, "%" PRIu64, STATIC_CAST(uint64_t, L));
+		snprintf(pBuffer, zBUfferLength, "%llu", STATIC_CAST(uint64_t, L));
 		break;
 	}
 }
@@ -1532,7 +1490,7 @@ DeserializeFloatInlined(char *pBuffer, size_t zBUfferLength, struct CTypeDescrip
 		snprintf(pBuffer, zBUfferLength, "%g", F);
 		break;
 	case WIDTH_16:
-		snprintf(pBuffer, zBUfferLength, "Undecoded-16-bit-Floating-Type (%#04" PRIx16 ")", STATIC_CAST(uint16_t, ulNumber));
+		snprintf(pBuffer, zBUfferLength, "Undecoded-16-bit-Floating-Type (%#04x)", STATIC_CAST(uint16_t, ulNumber));
 		break;
 	}
 }
@@ -1550,7 +1508,7 @@ llliGetNumber(char *szLocation, struct CTypeDescriptor *pType, unsigned long ulN
 	zNumberWidth = zDeserializeTypeWidth(pType);
 	switch (zNumberWidth) {
 	default:
-		Report(true, "UBSan: Unexpected %zu-Bit Type in %s\n", zNumberWidth, szLocation);
+		Report(true, "UBSan: Unexpected %lu-Bit Type in %s\n", zNumberWidth, szLocation);
 		__unreachable();
 		/* NOTREACHED */
 	case WIDTH_128:
@@ -1594,7 +1552,7 @@ llluGetNumber(char *szLocation, struct CTypeDescriptor *pType, unsigned long ulN
 	zNumberWidth = zDeserializeTypeWidth(pType);
 	switch (zNumberWidth) {
 	default:
-		Report(true, "UBSan: Unexpected %zu-Bit Type in %s\n", zNumberWidth, szLocation);
+		Report(true, "UBSan: Unexpected %lu-Bit Type in %s\n", zNumberWidth, szLocation);
 		__unreachable();
 		/* NOTREACHED */
 	case WIDTH_128:
@@ -1639,7 +1597,7 @@ DeserializeNumberFloat(char *szLocation, char *pBuffer, size_t zBUfferLength, st
 	zNumberWidth = zDeserializeTypeWidth(pType);
 	switch (zNumberWidth) {
 	default:
-		Report(true, "UBSan: Unexpected %zu-Bit Type in %s\n", zNumberWidth, szLocation);
+		Report(true, "UBSan: Unexpected %lu-Bit Type in %s\n", zNumberWidth, szLocation);
 		__unreachable();
 		/* NOTREACHED */
 #ifdef __HAVE_LONG_DOUBLE
