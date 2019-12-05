@@ -112,7 +112,7 @@ typedef int64_t longest;
 typedef uint64_t ulongest;
 
 #ifndef _KERNEL
-static int ubsan_flags = -1;
+__attribute__((unused)) static int ubsan_flags = -1;
 #define UBSAN_ABORT	    __BIT(0)
 #define UBSAN_STDOUT	__BIT(1)
 #define UBSAN_STDERR	__BIT(2)
@@ -1204,10 +1204,10 @@ Report(bool isFatal, const char *pFormat, ...)
 	else
 		vprintf(pFormat, ap);
 #elif defined(NUCLEUS)
-	if (isFatal || alwaysFatal)
-		vpanic(pFormat, ap);
-	else
 		vprintf(pFormat, ap);
+		if (isFatal || alwaysFatal) {
+			exit(1);
+		}
 #else
 	if (ubsan_flags == -1) {
 		char buf[1024];

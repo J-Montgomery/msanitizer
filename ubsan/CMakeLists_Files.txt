@@ -1,0 +1,10 @@
+set(SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
+set(HEADER_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+set(UBSAN_HEADERS
+${HEADER_ROOT}/ubsan.h
+)
+
+set(UBSAN_SOURCES
+${SRC_ROOT}/ubsan.c
+)

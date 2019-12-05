@@ -1,0 +1,5 @@
+set(TEST_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
+
+set(UBSAN_TESTS
+${SRC_ROOT}/ubsan_test.c
+)
