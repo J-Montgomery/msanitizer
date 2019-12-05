@@ -237,9 +237,6 @@ static void Report(bool isFatal, const char *pFormat, ...) __attribute__ ((forma
 static bool isAlreadyReported(struct CSourceLocation *pLocation);
 static size_t zDeserializeTypeWidth(struct CTypeDescriptor *pType);
 static void DeserializeLocation(char *pBuffer, size_t zBUfferLength, struct CSourceLocation *pLocation);
-#ifdef __SIZEOF_INT128__
-static void DeserializeUINT128(char *pBuffer, size_t zBUfferLength, struct CTypeDescriptor *pType, __uint128_t U128);
-#endif
 static void DeserializeNumberSigned(char *pBuffer, size_t zBUfferLength, struct CTypeDescriptor *pType, longest L);
 static void DeserializeNumberUnsigned(char *pBuffer, size_t zBUfferLength, struct CTypeDescriptor *pType, ulongest L);
 #ifndef _KERNEL
@@ -1206,6 +1203,11 @@ Report(bool isFatal, const char *pFormat, ...)
 		vpanic(pFormat, ap);
 	else
 		vprintf(pFormat, ap);
+#elif defined(NUCLEUS)
+	if (isFatal || alwaysFatal)
+		vpanic(pFormat, ap);
+	else
+		vprintf(pFormat, ap);
 #else
 	if (ubsan_flags == -1) {
 		char buf[1024];
@@ -1335,29 +1337,6 @@ DeserializeLocation(char *pBuffer, size_t zBUfferLength, struct CSourceLocation 
 	snprintf(pBuffer, zBUfferLength, "%s:%u:%u", pLocation->mFilename, pLocation->mLine & (uint32_t)~ACK_REPORTED, pLocation->mColumn);
 }
 
-#ifdef __SIZEOF_INT128__
-static void
-DeserializeUINT128(char *pBuffer, size_t zBUfferLength, struct CTypeDescriptor *pType, __uint128_t U128)
-{
-	char szBuf[3]; /* 'XX\0' */
-	char rgNumber[sizeof(ulongest)];
-	ssize_t zI;
-
-	memcpy(rgNumber, &U128, sizeof(U128));
-
-	strlcpy(pBuffer, "Undecoded-128-bit-Integer-Type (0x", zBUfferLength);
-#if BYTE_ORDER == LITTLE_ENDIAN
-	for (zI = sizeof(ulongest) - 1; zI >= 0; zI--) {
-#else
-	for (zI = 0; zI < (ssize_t)sizeof(ulongest); zI++) {
-#endif
-		snprintf(szBuf, sizeof(szBuf), "%02" PRIx8, rgNumber[zI]);
-		strlcat(pBuffer, szBuf, zBUfferLength);
-	}
-	strlcat(pBuffer, ")", zBUfferLength);
-}
-#endif
-
 static void
 DeserializeNumberSigned(char *pBuffer, size_t zBUfferLength, struct CTypeDescriptor *pType, longest L)
 {
@@ -1372,11 +1351,6 @@ DeserializeNumberSigned(char *pBuffer, size_t zBUfferLength, struct CTypeDescrip
 		ASSERT(0 && "Invalid codepath");
 		__unreachable();
 		/* NOTREACHED */
-#ifdef __SIZEOF_INT128__
-	case WIDTH_128:
-		DeserializeUINT128(pBuffer, zBUfferLength, pType, STATIC_CAST(__uint128_t, L));
-		break;
-#endif
 	case WIDTH_64:
 		/* FALLTHROUGH */
 	case WIDTH_32:
@@ -1403,11 +1377,6 @@ DeserializeNumberUnsigned(char *pBuffer, size_t zBUfferLength, struct CTypeDescr
 		ASSERT(0 && "Invalid codepath");
 		__unreachable();
 		/* NOTREACHED */
-#ifdef __SIZEOF_INT128__
-	case WIDTH_128:
-		DeserializeUINT128(pBuffer, zBUfferLength, pType, STATIC_CAST(__uint128_t, L));
-		break;
-#endif
 	case WIDTH_64:
 		/* FALLTHROUGH */
 	case WIDTH_32:
@@ -1511,15 +1480,6 @@ llliGetNumber(char *szLocation, struct CTypeDescriptor *pType, unsigned long ulN
 		Report(true, "UBSan: Unexpected %lu-Bit Type in %s\n", zNumberWidth, szLocation);
 		__unreachable();
 		/* NOTREACHED */
-	case WIDTH_128:
-#ifdef __SIZEOF_INT128__
-		memcpy(&L, REINTERPRET_CAST(longest *, ulNumber), sizeof(longest));
-		break;
-#else
-		Report(true, "UBSan: Unexpected 128-Bit Type in %s\n", szLocation);
-		__unreachable();
-		/* NOTREACHED */
-#endif
 	case WIDTH_64:
 		if (sizeof(ulNumber) * CHAR_BIT < WIDTH_64) {
 			L = *REINTERPRET_CAST(int64_t *, ulNumber);
@@ -1555,15 +1515,6 @@ llluGetNumber(char *szLocation, struct CTypeDescriptor *pType, unsigned long ulN
 		Report(true, "UBSan: Unexpected %lu-Bit Type in %s\n", zNumberWidth, szLocation);
 		__unreachable();
 		/* NOTREACHED */
-	case WIDTH_128:
-#ifdef __SIZEOF_INT128__
-		memcpy(&UL, REINTERPRET_CAST(ulongest *, ulNumber), sizeof(ulongest));
-		break;
-#else
-		Report(true, "UBSan: Unexpected 128-Bit Type in %s\n", szLocation);
-		__unreachable();
-		/* NOTREACHED */
-#endif
 	case WIDTH_64:
 		if (sizeof(ulNumber) * CHAR_BIT < WIDTH_64) {
 			UL = *REINTERPRET_CAST(uint64_t *, ulNumber);
@@ -1644,14 +1595,8 @@ DeserializeNumber(char *szLocation, char *pBuffer, size_t zBUfferLength, struct 
 		}
 		break;
 	case KIND_FLOAT:
-#ifdef _KERNEL
-		Report(true, "UBSan: Unexpected Float Type in %s\n", szLocation);
-		__unreachable();
-		/* NOTREACHED */
-#else
 		DeserializeNumberFloat(szLocation, pBuffer, zBUfferLength, pType, ulNumber);
 		break;
-#endif
 	case KIND_UNKNOWN:
 		Report(true, "UBSan: Unknown Type in %s\n", szLocation);
 		__unreachable();
