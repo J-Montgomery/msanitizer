@@ -1,0 +1,2 @@
+@ECHO OFF
+cmake . -G "Nucleus" -B"%1" -DCMAKE_BUILD_TYPE=%2 -DCMAKE_TOOLCHAIN_FILE="C:\dev\EVPlus\frp2\utils\cmake\nucleus_gcc.cmake" -DOS_ROOT="C:\dev\EVPlus\frp2\libos\v2017.02.02\SystemProject" -DNUCLEUS_MAIN_SOURCE="C:\dev\EVPlus\frp2\utils\NucleusEntryPoints\stub_main"
